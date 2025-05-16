@@ -48,7 +48,7 @@ To use Flutter Surf MCP with Claude, add the following configuration to your Cla
               "--directory",
               "[path]/flutter_surf_mcp",
               "run",
-              "flutter_mcp.py"
+              "flutter_surf_mcp.py"
           ]
       }
   }
