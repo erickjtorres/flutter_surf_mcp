@@ -47,16 +47,16 @@ async def get_app_state() -> str:
     
     try:
         # Get app state
-        all_nodes = app.get_app_state()
+        node_state = app.get_app_state()
         
-        # Convert to a more readable format
-        formatted_nodes = format_widget_tree(all_nodes)
+        # Use the to_json method provided by NodeState
+        formatted_state = format_widget_tree(node_state)
         
-        # if greater than result exceeds maximum length of 1000000 trim the result
-        if len(formatted_nodes) > 1000000:
-            formatted_nodes = formatted_nodes[:1000000]
+        # if result exceeds maximum length of 1000000 trim the result
+        if len(formatted_state) > 1000000:
+            formatted_state = formatted_state[:1000000]
         
-        return formatted_nodes
+        return formatted_state
     except Exception as e:
         return f"Error getting app state: {str(e)}"
 
@@ -79,26 +79,22 @@ async def click_widget(widget_id: str) -> str:
         except ValueError:
             return f"Invalid widget ID format: '{widget_id}'. ID should be an integer."
 
-        # Get current app state to have the all_nodes object
-        all_nodes = app.get_app_state()
+        # Get current app state to have the node_state object
+        node_state = app.get_app_state()
         
-        # Find widget by ID for better feedback
-        target_node = None
-        for node in all_nodes:
-            if node.unique_id == target_unique_id:
-                target_node = node
-                break
+        # Find widget by ID from selector_map
+        target_node = node_state.selector_map.get(target_unique_id)
         
         if not target_node:
             return f"Widget with ID '{widget_id}' not found. Use get_app_state to see available widgets."
         
         # Get info for better feedback
         widget_type = target_node.widget_type
-        widget_text = target_node.text if target_node.text else None
+        widget_text = target_node.text if hasattr(target_node, 'text') and target_node.text else None
         widget_key = target_node.key if target_node.key else None
         
         # Click the widget
-        success = app.click_widget_by_unique_id(all_nodes, int(widget_id))
+        success = app.click_widget_by_unique_id(node_state, int(widget_id))
         
         if success:
             return f"Successfully clicked on {widget_type} widget with text '{widget_text}' and key '{widget_key}'."
@@ -128,26 +124,22 @@ async def enter_text(widget_id: str, text: str) -> str:
         except ValueError:
             return f"Invalid widget ID format: '{widget_id}'. ID should be an integer."
 
-        # Get current app state to have the all_nodes object
-        all_nodes = app.get_app_state()
+        # Get current app state to have the node_state object
+        node_state = app.get_app_state()
         
-        # Find widget by ID for better feedback
-        target_node = None
-        for node in all_nodes:
-            if node.unique_id == target_unique_id:
-                target_node = node
-                break
+        # Find widget by ID from selector_map
+        target_node = node_state.selector_map.get(target_unique_id)
         
         if not target_node:
             return f"Widget with ID '{widget_id}' not found. Use get_app_state to see available widgets."
         
         # Get info for better feedback
         widget_type = target_node.widget_type
-        widget_text = target_node.text if target_node.text else None
+        widget_text = target_node.text if hasattr(target_node, 'text') and target_node.text else None
         widget_key = target_node.key if target_node.key else None
         
         # Enter text in the widget
-        success = app.enter_text_with_unique_id(all_nodes, int(widget_id), text)
+        success = app.enter_text_with_unique_id(node_state, int(widget_id), text)
         
         if success:
             return f"Successfully entered text '{text}' into {widget_type} widget with previous text '{widget_text}' and key '{widget_key}'."
@@ -172,23 +164,23 @@ async def find_widgets(search_by: str = "all", search_value: str = "") -> str:
     
     try:
         # Get current app state
-        all_nodes = app.get_app_state()
+        node_state = app.get_app_state()
         
         matches = []
         search_value = search_value.lower()
         
         # Search by the specified criteria
-        for node in all_nodes:
+        for uid, node in node_state.selector_map.items():
             if search_by == "key" and node.key and search_value in node.key.lower():
                 matches.append(node)
-            elif search_by == "text" and node.text and search_value in node.text.lower():
+            elif search_by == "text" and hasattr(node, 'text') and node.text and search_value in node.text.lower():
                 matches.append(node)
             elif search_by == "type" and search_value in node.widget_type.lower():
                 matches.append(node)
             elif search_by == "all":
                 # Search in all fields
                 if (node.key and search_value in node.key.lower()) or \
-                   (node.text and search_value in node.text.lower()) or \
+                   (hasattr(node, 'text') and node.text and search_value in node.text.lower()) or \
                    (search_value in node.widget_type.lower()):
                     matches.append(node)
         
@@ -199,19 +191,22 @@ async def find_widgets(search_by: str = "all", search_value: str = "") -> str:
         result = f"Found {len(matches)} widgets matching '{search_value}' in {search_by}:\n\n"
         
         for i, node in enumerate(matches, 1):
+            node_json = node.to_json()
             result += f"{i}. Type: {node.widget_type}\n"
             result += f"   ID: {node.unique_id}\n"
-            result += f"   Parent ID: {node.parent_node.unique_id if node.parent_node else 'None'}\n"
+            result += f"   Parent ID: {node.parent.unique_id if node.parent else 'None'}\n"
             result += f"   Children IDs: {', '.join([str(child.unique_id) for child in node.child_nodes]) if node.child_nodes else 'None'}\n"
-            result += f"   Properties: {node.properties}\n"
+            
+            if 'properties' in node_json:
+                result += f"   Properties: {node_json['properties']}\n"
             
             if node.key:
                 result += f"   Key: {node.key}\n"
             
-            if node.text:
+            if hasattr(node, 'text') and node.text:
                 result += f"   Text: {node.text}\n"
                 
-            result += f"   Interactive: {'Yes' if node.is_interactive else 'Yes'}\n"
+            result += f"   Interactive: {'Yes' if node.is_interactive else 'No'}\n"
             result += "\n"
             
         return result
@@ -238,26 +233,22 @@ async def scroll_widget_into_view(widget_id: str) -> str:
         except ValueError:
             return f"Invalid widget ID format: '{widget_id}'. ID should be an integer."
 
-        # Get current app state to have the all_nodes object
-        all_nodes = app.get_app_state()
+        # Get current app state to have the node_state object
+        node_state = app.get_app_state()
         
-        # Find widget by ID for better feedback
-        target_node = None
-        for node in all_nodes:
-            if node.unique_id == target_unique_id:
-                target_node = node
-                break
+        # Find widget by ID from selector_map
+        target_node = node_state.selector_map.get(target_unique_id)
         
         if not target_node:
             return f"Widget with ID '{widget_id}' not found. Use get_app_state to see available widgets."
         
         # Get info for better feedback
         widget_type = target_node.widget_type
-        widget_text = target_node.text if target_node.text else None
+        widget_text = target_node.text if hasattr(target_node, 'text') and target_node.text else None
         widget_key = target_node.key if target_node.key else None
         
         # Scroll the widget into view
-        success = app.scroll_into_view(all_nodes, target_unique_id)
+        success = app.scroll_into_view(node_state, target_unique_id)
         
         if success:
             return f"Successfully scrolled {widget_type} widget into view with text '{widget_text}' and key '{widget_key}'."
@@ -291,26 +282,22 @@ async def scroll_widget_normal(widget_id: str, direction: str = "down") -> str:
         except ValueError:
             return f"Invalid widget ID format: '{widget_id}'. ID should be an integer."
 
-        # Get current app state to have the all_nodes object
-        all_nodes = app.get_app_state()
+        # Get current app state to have the node_state object
+        node_state = app.get_app_state()
         
-        # Find widget by ID for better feedback
-        target_node = None
-        for node in all_nodes:
-            if node.unique_id == target_unique_id:
-                target_node = node
-                break
+        # Find widget by ID from selector_map
+        target_node = node_state.selector_map.get(target_unique_id)
         
         if not target_node:
             return f"Widget with ID '{widget_id}' not found. Use get_app_state to see available widgets."
         
         # Get info for better feedback
         widget_type = target_node.widget_type
-        widget_text = target_node.text if target_node.text else None
+        widget_text = target_node.text if hasattr(target_node, 'text') and target_node.text else None
         widget_key = target_node.key if target_node.key else None
         
         # Scroll the widget
-        success = app.scroll_up_or_down(all_nodes, target_unique_id, direction=direction)
+        success = app.scroll_up_or_down(node_state, target_unique_id, direction=direction)
         
         if success:
             return f"Successfully scrolled {direction} {widget_type} widget with text '{widget_text}' and key '{widget_key}'."
@@ -347,27 +334,23 @@ async def scroll_widget(widget_id: str, direction: str = "down", dx: int = 0, dy
         except ValueError:
             return f"Invalid widget ID format: '{widget_id}'. ID should be an integer."
 
-        # Get current app state to have the all_nodes object
-        all_nodes = app.get_app_state()
+        # Get current app state to have the node_state object
+        node_state = app.get_app_state()
         
-        # Find widget by ID for better feedback
-        target_node = None
-        for node in all_nodes:
-            if node.unique_id == target_unique_id:
-                target_node = node
-                break
+        # Find widget by ID from selector_map
+        target_node = node_state.selector_map.get(target_unique_id)
         
         if not target_node:
             return f"Widget with ID '{widget_id}' not found. Use get_app_state to see available widgets."
         
         # Get info for better feedback
         widget_type = target_node.widget_type
-        widget_text = target_node.text if target_node.text else None
+        widget_text = target_node.text if hasattr(target_node, 'text') and target_node.text else None
         widget_key = target_node.key if target_node.key else None
         
         # Scroll the widget with extended parameters
         success = app.scroll_up_or_down_extended(
-            all_nodes, 
+            node_state, 
             target_unique_id, 
             direction=direction, 
             dx=dx, 
@@ -406,46 +389,58 @@ async def toggle_debug_paint_feature(enable: bool = True) -> str:
     except Exception as e:
         return f"Error toggling debug paint: {str(e)}"
 
-def format_widget_tree(nodes: Any) -> str:
+def format_widget_tree(node_state: Any) -> str:
     """Format the widget tree in a readable way for Claude to understand the UI structure."""
-    result = "Flutter App UI Structure:\n\n"
-    
-    def process_node(node, depth=0):
-        nonlocal result
-        
-        # Extract widget properties from AppNode object
-        widget_id = node.unique_id
-        widget_type = node.widget_type
-        widget_text = node.text if node.text is not None else ""
-        
-        # Add this widget to the result
-        result += f"id: {widget_id}"
-        result += f"type: {widget_type}"
-        
-        if widget_text:
-            result += f"text: {widget_text}"
+    try:
+        # Use the to_json method provided by NodeState
+        if hasattr(node_state, 'to_json'):
+            json_data = node_state.to_json()
             
-        
-        # Add other important properties
-        if node.is_interactive:
-            result += f"canClick: Yes"
-        
-        
-        # Process children
-        if node.child_nodes:
-            for child in node.child_nodes:
-                process_node(child, depth + 1)
+            # Create a human-readable structure with the JSON data
+            result = "Flutter App UI Structure:\n\n"
+            
+            # Format the element tree
+            result += "Element Tree:\n"
+            result += format_json_node(json_data['element_tree'], 0)
+            
+            # Optional: Add summary info
+            result += "\nUI Summary:\n"
+            result += f"- Total nodes: {len(node_state.selector_map)}\n"
+            result += f"- Interactive nodes: {sum(1 for node in node_state.selector_map.values() if node.is_interactive)}\n"
+            
+            return result
+        else:
+            # Fallback for cases where to_json is not available
+            return f"Node state doesn't support to_json serialization. Raw data: {str(node_state)}"
+    except Exception as e:
+        return f"Error formatting widget tree: {str(e)}\nRaw data: {str(node_state)}"
+
+def format_json_node(node_json, depth=0):
+    """Recursively format a node JSON structure with indentation."""
+    indent = "  " * depth
+    result = f"{indent}ID: {node_json['id']} - Type: {node_json['widget_type']}\n"
     
-    # Start processing from the root nodes
-    if hasattr(nodes, 'unique_id'):  # Single node
-        process_node(nodes)
-    elif isinstance(nodes, list) and nodes:
-        for node in nodes:
-            if hasattr(node, 'unique_id'):  # Ensure it's a AppNode
-                process_node(node)
-    else:
-        result += "Unable to parse widget tree structure\n"
-        result += f"Raw data: {str(nodes)}\n"
+    # Add text if present
+    if 'text' in node_json and node_json['text']:
+        result += f"{indent}  Text: {node_json['text']}\n"
+    
+    # Add key if present
+    if 'key' in node_json and node_json['key']:
+        result += f"{indent}  Key: {node_json['key']}\n"
+    
+    # Add interactivity info
+    if 'interactive' in node_json:
+        result += f"{indent}  Interactive: {'Yes' if node_json['interactive'] else 'No'}\n"
+    
+    # Add properties if present
+    if 'properties' in node_json and node_json['properties']:
+        result += f"{indent}  Properties: {str(node_json['properties'])}\n"
+    
+    # Add children
+    if 'children' in node_json and node_json['children']:
+        result += f"{indent}  Children: {len(node_json['children'])}\n"
+        for child in node_json['children']:
+            result += format_json_node(child, depth + 1)
     
     return result
 
