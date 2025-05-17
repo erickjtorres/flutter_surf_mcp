@@ -22,6 +22,7 @@ Flutter Surf MCP is a MCP server that allows interactions with Flutter applicati
 
 ## Installation
 
+
 1. Clone the repository:
 
 ```bash
@@ -52,5 +53,16 @@ To use Flutter Surf MCP with Claude, add the following configuration to your Cla
           ]
       }
   }
+}
+```
+
+**Note: Make sure to enable the flutter driver extension:**
+
+```dart
+import 'package:flutter_driver/driver_extension.dart';
+
+void main() {
+  enableFlutterDriverExtension();
+  runApp(const HomeScreen());
 }
 ```
